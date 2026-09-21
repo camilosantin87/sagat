@@ -32,21 +32,49 @@ public class NotificationDispatcher {
                 n.getMetadata());
 
         if (request.channel() == NotificationChannel.LOG) {
-                log.atInfo().addKeyValue("event", "notification.sent").addKeyValue("notificationId", request.id())
-                    .addKeyValue("recipient", request.recipient()).addKeyValue("subject", request.subject())
-                    .addKeyValue("body", request.body()).log("Notification dispatched");
+                log.atInfo()
+                    .addKeyValue("event", "notification.sent")
+                    .addKeyValue("notificationId", request.id())
+                    .addKeyValue("channel", request.channel())
+                    .addKeyValue("attempt", 1)
+                    .addKeyValue("status", "DISPATCHED")
+                    .addKeyValue("recipient", request.recipient())
+                    .addKeyValue("subject", request.subject())
+                    .addKeyValue("body", request.body())
+                    .log("Notification dispatched");
             return;
         }
         RuntimeException last = null;
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            log.atInfo()
+                    .addKeyValue("event", "notification.dispatch_attempt")
+                    .addKeyValue("notificationId", request.id())
+                    .addKeyValue("channel", request.channel())
+                    .addKeyValue("attempt", attempt)
+                    .addKeyValue("status", "PROCESSING")
+                    .log("Notification dispatch attempt");
             try {
                 restClient.post().uri(request.recipient()).contentType(MediaType.APPLICATION_JSON)
                         .body(request)
                         .retrieve().toBodilessEntity();
+                log.atInfo()
+                        .addKeyValue("event", "notification.sent")
+                        .addKeyValue("notificationId", request.id())
+                        .addKeyValue("channel", request.channel())
+                        .addKeyValue("attempt", attempt)
+                        .addKeyValue("status", "DISPATCHED")
+                        .log("Notification dispatched");
                 return;
             } catch (RuntimeException ex) {
                 last = ex;
-                log.warn("Notification delivery attempt {} failed for {}: {}", attempt, request.id(), ex.getMessage());
+                log.atWarn()
+                        .addKeyValue("event", "notification.dispatch_attempt_failed")
+                        .addKeyValue("notificationId", request.id())
+                        .addKeyValue("channel", request.channel())
+                        .addKeyValue("attempt", attempt)
+                        .addKeyValue("status", "PROCESSING")
+                        .setCause(ex)
+                        .log("Notification dispatch attempt failed");
             }
         }
             

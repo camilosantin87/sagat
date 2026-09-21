@@ -45,6 +45,12 @@ Elegí esta estructura porque para el tamaño actual del proyecto es simple de e
 
 No es una arquitectura pensada necesariamente para un sistema muy grande. Si el proyecto creciera, probablemente tendría sentido separar más la lógica de negocio de la infraestructura, por ejemplo utilizando una arquitectura hexagonal o basada en eventos.
 
+La autenticacion se realiza mediante api-key validando el header X-API-Key. El porque tiene varias justificaciones pero entre ellas destacan:
+- sencillo de implementar
+- no usa sessiones
+- adecuada para integraciones servicio a servicio
+Para un sistema con usuarios finales o permisos complejos usaria JWT
+
 ### Procesamiento asíncrono
 
 El envío de las notificaciones no se realiza directamente durante el `POST`.
@@ -64,7 +70,7 @@ Guardar primero la notificación en PostgreSQL permite que una notificación pen
 
 La desventaja es que el polling introduce una demora de hasta 60 segundos no es la mejor opción si existen varias instancias de la aplicación procesando la misma cola.
 
-En un escenario con mayor volumen o varias instancias, probablemente reemplazaría este mecanismo por un broker de mensajes.
+En un escenario con mayor volumen o varias instancias, probablemente reemplazaría este mecanismo por un broker de mensajes o cola JMS.
 
 ### Jakarta EE y WildFly
 
