@@ -14,5 +14,6 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @EntityGraph(attributePaths = "metadata")
     Optional<Notification> findById(UUID id);
 
-    List<Notification> findTop50ByStatusOrderByCreatedAtAsc(NotificationStatus status);
+    List<Notification> findTop50ByStatusInAndAttemptsLessThanOrderByCreatedAtAsc(
+            List<NotificationStatus> statuses, int attempts);
 }

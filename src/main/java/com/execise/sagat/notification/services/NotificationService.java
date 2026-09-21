@@ -8,6 +8,7 @@ import com.execise.sagat.notification.repository.NotificationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +23,8 @@ public class NotificationService {
     private NotificationRepository repository;
     @Autowired 
     private NotificationDispatcher dispatcher;
+    @Value("${notification.retry.max-attempts:2}")
+    private int maxQueueAttempts;
 
     @Transactional
     public Notification create(NotificationRequest request) {
@@ -39,7 +42,9 @@ public class NotificationService {
             fixedDelayString = "${notification.worker.fixed-delay-ms:30000}")
     @Transactional
     public void processQueue() {
-        List<Notification> pending = repository.findTop50ByStatusOrderByCreatedAtAsc(NotificationStatus.PENDING);
+        int maxAttempts = Math.max(2, maxQueueAttempts);
+        List<Notification> pending = repository.findTop50ByStatusInAndAttemptsLessThanOrderByCreatedAtAsc(
+                List.of(NotificationStatus.PENDING, NotificationStatus.FAILED), maxAttempts);
         for (Notification n : pending) {
             n.markProcessing(); repository.save(n);
             try {
