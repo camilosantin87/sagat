@@ -22,7 +22,12 @@ public class ServiceNotificationController {
             return ResponseEntity.badRequest().build();
         }
 
-        log.info("Service notification received: {}", request.id());
+        log.atInfo()
+                .addKeyValue("event", "notification.received")
+                .addKeyValue("notificationId", request.id())
+                .addKeyValue("channel", request.channel())
+                .addKeyValue("status", "RECEIVED")
+                .log("Service notification received");
         return ResponseEntity.accepted().build();
     }
 }

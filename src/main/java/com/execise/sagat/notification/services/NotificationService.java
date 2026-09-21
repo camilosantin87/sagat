@@ -28,8 +28,16 @@ public class NotificationService {
 
     @Transactional
     public Notification create(NotificationRequest request) {
-        return repository.save(new Notification(request.recipient(), request.channel(), request.subject(),
-                request.body(), request.priority(), request.metadata()));
+        Notification notification = repository.save(new Notification(request.recipient(), request.channel(),
+                request.subject(), request.body(), request.priority(), request.metadata()));
+        log.atInfo()
+                .addKeyValue("event", "notification.created")
+                .addKeyValue("notificationId", notification.getId())
+                .addKeyValue("channel", notification.getChannel())
+                .addKeyValue("status", notification.getStatus())
+                .addKeyValue("attempt", notification.getAttempts())
+                .log("Notification created");
+        return notification;
     }
 
     @Transactional(readOnly = true)
@@ -46,14 +54,44 @@ public class NotificationService {
         List<Notification> pending = repository.findTop50ByStatusInAndAttemptsLessThanOrderByCreatedAtAsc(
                 List.of(NotificationStatus.PENDING, NotificationStatus.FAILED), maxAttempts);
         for (Notification n : pending) {
+            int nextAttempt = n.getAttempts() + 1;
+            if (n.getStatus() == NotificationStatus.FAILED) {
+                log.atWarn()
+                        .addKeyValue("event", "notification.retry")
+                        .addKeyValue("notificationId", n.getId())
+                        .addKeyValue("channel", n.getChannel())
+                        .addKeyValue("attempt", nextAttempt)
+                        .addKeyValue("status", NotificationStatus.FAILED)
+                        .log("Retrying failed notification");
+            }
             n.markProcessing(); repository.save(n);
+            log.atInfo()
+                    .addKeyValue("event", "notification.processing")
+                    .addKeyValue("notificationId", n.getId())
+                    .addKeyValue("channel", n.getChannel())
+                    .addKeyValue("attempt", n.getAttempts())
+                    .addKeyValue("status", n.getStatus())
+                    .log("Notification processing started");
             try {
                 dispatcher.dispatch(n);
                 n.markSent();
-                log.atInfo().addKeyValue("event", "notification.completed").addKeyValue("notificationId", n.getId()).log("Notification completed");
+                log.atInfo()
+                        .addKeyValue("event", "notification.completed")
+                        .addKeyValue("notificationId", n.getId())
+                        .addKeyValue("channel", n.getChannel())
+                        .addKeyValue("attempt", n.getAttempts())
+                        .addKeyValue("status", n.getStatus())
+                        .log("Notification completed");
             } catch (RuntimeException ex) {
                 n.markFailed(ex.getMessage());
-                log.atError().addKeyValue("event", "notification.failed").addKeyValue("notificationId", n.getId()).setCause(ex).log("Notification failed");
+                log.atError()
+                        .addKeyValue("event", "notification.failed")
+                        .addKeyValue("notificationId", n.getId())
+                        .addKeyValue("channel", n.getChannel())
+                        .addKeyValue("attempt", n.getAttempts())
+                        .addKeyValue("status", n.getStatus())
+                        .setCause(ex)
+                        .log("Notification failed");
             }
             repository.save(n);
         }
