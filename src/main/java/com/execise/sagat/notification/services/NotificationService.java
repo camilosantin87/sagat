@@ -19,9 +19,9 @@ import java.util.UUID;
 public class NotificationService {
 
     private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
-    @Autowired 
+    @Autowired
     private NotificationRepository repository;
-    @Autowired 
+    @Autowired
     private NotificationDispatcher dispatcher;
     @Value("${notification.retry.max-attempts:2}")
     private int maxQueueAttempts;

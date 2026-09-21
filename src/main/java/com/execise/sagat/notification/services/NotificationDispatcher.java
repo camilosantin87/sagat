@@ -2,6 +2,7 @@ package com.execise.sagat.notification.services;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -14,12 +15,10 @@ import com.execise.sagat.notification.payloads.NotificationDispatchRequest;
 @Service
 public class NotificationDispatcher {
     private static final Logger log = LoggerFactory.getLogger(NotificationDispatcher.class);
-    private final RestClient restClient = RestClient.builder().build();
-    private final int maxAttempts;
-
-    public NotificationDispatcher(@Value("${notification.dispatch.max-attempts:3}") int maxAttempts) {
-        this.maxAttempts = Math.max(2, maxAttempts);
-    }
+    @Autowired
+    private RestClient.Builder restClientBuilder;
+    @Value("${notification.dispatch.max-attempts:3}")
+    private int maxAttempts;
 
     public void dispatch(Notification n) {
         NotificationDispatchRequest request = new NotificationDispatchRequest(
@@ -45,7 +44,9 @@ public class NotificationDispatcher {
             return;
         }
         RuntimeException last = null;
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+        RestClient restClient = restClientBuilder.build();
+        int attempts = Math.max(2, maxAttempts);
+        for (int attempt = 1; attempt <= attempts; attempt++) {
             log.atInfo()
                     .addKeyValue("event", "notification.dispatch_attempt")
                     .addKeyValue("notificationId", request.id())
@@ -78,6 +79,6 @@ public class NotificationDispatcher {
             }
         }
             
-        throw new IllegalStateException("No se pudo entregar la notificacion despues de " + maxAttempts + " intentos", last);
+        throw new IllegalStateException("No se pudo entregar la notificacion despues de " + attempts + " intentos", last);
     }
 }

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -25,9 +26,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@SpringBootTest
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureMockMvc
 class NotificationApiIntegrationTest {
+
+    @LocalServerPort
+    int port;
 
     @Autowired
     MockMvc mvc;
@@ -130,6 +134,57 @@ class NotificationApiIntegrationTest {
                         .header("X-API-Key", "change-me"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.error").exists());
+    }
+
+    @Test
+    void createsAndDispatchesServiceNotificationThroughTheReceiverEndpoint() throws Exception {
+        MvcResult result = mvc.perform(post("/api/notifications")
+                        .header("X-API-Key", "change-me")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "recipient": "http://localhost:%d/api/service-notifications",
+                                  "channel": "SERVICE",
+                                  "subject": "service subject",
+                                  "body": "service body",
+                                  "priority": "HIGH",
+                                  "metadata": {"orderId": "123"}
+                                }
+                                """.formatted(port)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andReturn();
+
+        String location = result.getResponse().getHeader(HttpHeaders.LOCATION);
+        assertNotNull(location);
+        UUID id = UUID.fromString(location.substring(location.lastIndexOf('/') + 1));
+
+        Notification pending = repository.findById(id).orElseThrow();
+        assertEquals(NotificationChannel.SERVICE, pending.getChannel());
+        assertEquals(NotificationStatus.PENDING, pending.getStatus());
+
+        service.processQueue();
+
+        Notification sent = repository.findById(id).orElseThrow();
+        assertEquals(NotificationStatus.SENT, sent.getStatus());
+        assertEquals(1, sent.getAttempts());
+    }
+
+    @Test
+    void serviceReceiverRejectsNotificationsWithAnotherChannel() throws Exception {
+        mvc.perform(post("/api/service-notifications")
+                        .contentType("application/json")
+                        .content("""
+                                {
+                                  "id": "00000000-0000-0000-0000-000000000001",
+                                  "recipient": "recipient",
+                                  "channel": "LOG",
+                                  "subject": "subject",
+                                  "body": "body",
+                                  "priority": "LOW"
+                                }
+                                """))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
