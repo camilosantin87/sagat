@@ -3,7 +3,9 @@ package com.execise.sagat;
 import com.execise.sagat.notification.entity.Notification;
 import com.execise.sagat.notification.enums.NotificationChannel;
 import com.execise.sagat.notification.enums.NotificationPriority;
+import com.execise.sagat.notification.enums.NotificationStatus;
 import com.execise.sagat.notification.repository.NotificationRepository;
+import com.execise.sagat.notification.services.NotificationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -13,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.util.UUID;
+import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -30,6 +33,9 @@ class NotificationApiIntegrationTest {
 
     @Autowired
     NotificationRepository repository;
+
+    @Autowired
+    NotificationService service;
 
     @Test
     void createsAndPersistsPendingNotificationWithValidApiKey() throws Exception {
@@ -72,5 +78,28 @@ class NotificationApiIntegrationTest {
                         .contentType("application/json")
                         .content("{}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void retriesFailedNotificationAndKeepsItRegistered() {
+        Notification notification = repository.save(new Notification(
+                "not a valid uri",
+                NotificationChannel.SERVICE,
+                "subject",
+                "body",
+                NotificationPriority.HIGH,
+                Map.of()));
+
+        service.processQueue();
+        Notification afterFirstAttempt = repository.findById(notification.getId()).orElseThrow();
+        assertEquals(NotificationStatus.FAILED, afterFirstAttempt.getStatus());
+        assertEquals(1, afterFirstAttempt.getAttempts());
+        assertNotNull(afterFirstAttempt.getLastError());
+
+        service.processQueue();
+        Notification afterRetry = repository.findById(notification.getId()).orElseThrow();
+        assertEquals(NotificationStatus.FAILED, afterRetry.getStatus());
+        assertEquals(2, afterRetry.getAttempts());
+        assertNotNull(afterRetry.getLastError());
     }
 }
