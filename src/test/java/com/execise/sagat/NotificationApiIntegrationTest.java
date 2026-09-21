@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,6 +79,57 @@ class NotificationApiIntegrationTest {
                         .contentType("application/json")
                         .content("{}"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsInvalidApiKey() throws Exception {
+        mvc.perform(post("/api/notifications")
+                        .header("X-API-Key", "invalid")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void rejectsInvalidNotificationPayload() throws Exception {
+        mvc.perform(post("/api/notifications")
+                        .header("X-API-Key", "change-me")
+                        .contentType("application/json")
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("validation_error"))
+                .andExpect(jsonPath("$.fields.recipient").exists())
+                .andExpect(jsonPath("$.fields.channel").exists())
+                .andExpect(jsonPath("$.fields.subject").exists())
+                .andExpect(jsonPath("$.fields.body").exists())
+                .andExpect(jsonPath("$.fields.priority").exists());
+    }
+
+    @Test
+    void returnsCreatedNotificationWhenItIsRequested() throws Exception {
+        MvcResult result = mvc.perform(post("/api/notifications")
+                        .header("X-API-Key", "change-me")
+                        .contentType("application/json")
+                        .content("{\"recipient\":\"recipient\",\"channel\":\"LOG\",\"subject\":\"subject\",\"body\":\"body\",\"priority\":\"MEDIUM\"}"))
+                .andExpect(status().isAccepted())
+                .andReturn();
+
+        String id = result.getResponse().getHeader(HttpHeaders.LOCATION).substring(
+                result.getResponse().getHeader(HttpHeaders.LOCATION).lastIndexOf('/') + 1);
+
+        mvc.perform(get("/api/notifications/{id}", id)
+                        .header("X-API-Key", "change-me"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(id))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    void returnsNotFoundForUnknownNotification() throws Exception {
+        mvc.perform(get("/api/notifications/{id}", "00000000-0000-0000-0000-000000000000")
+                        .header("X-API-Key", "change-me"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").exists());
     }
 
     @Test
